@@ -86,6 +86,7 @@ public class LocationPlugin implements MethodCallHandler, StreamHandler, PluginR
     private int locationPermissionState;
 
     private final Activity activity;
+    private final Context mContext;
 
     private boolean waitingForPermission = false;
     private LocationManager locationManager;
@@ -93,12 +94,12 @@ public class LocationPlugin implements MethodCallHandler, StreamHandler, PluginR
 
     private HashMap<Integer, Integer> mapFlutterAccuracy = new HashMap<>();
 
-    LocationPlugin(Activity activity) {
+    LocationPlugin(Activity activity,Context context) {
+        this.mContext = context;
         this.activity = activity;
-        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(activity);
-        mSettingsClient = LocationServices.getSettingsClient(activity);
-        locationManager = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
-
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(mContext);
+        mSettingsClient = LocationServices.getSettingsClient(mContext);
+        locationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);;
         this.mapFlutterAccuracy.put(0, LocationRequest.PRIORITY_NO_POWER);
         this.mapFlutterAccuracy.put(1, LocationRequest.PRIORITY_LOW_POWER);
         this.mapFlutterAccuracy.put(2, LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
@@ -115,18 +116,18 @@ public class LocationPlugin implements MethodCallHandler, StreamHandler, PluginR
      * Plugin registration.
      */
     public static void registerWith(Registrar registrar) {
-        if(registrar.activity() != null) {
-            final MethodChannel channel = new MethodChannel(registrar.messenger(), METHOD_CHANNEL_NAME);
-            LocationPlugin locationWithMethodChannel = new LocationPlugin(registrar.activity());
-            channel.setMethodCallHandler(locationWithMethodChannel);
-            registrar.addRequestPermissionsResultListener(locationWithMethodChannel.getPermissionsResultListener());
-            registrar.addActivityResultListener(locationWithMethodChannel);
+        
+        final MethodChannel channel = new MethodChannel(registrar.messenger(), METHOD_CHANNEL_NAME);
+        LocationPlugin locationWithMethodChannel = new LocationPlugin(registrar.activity(),registrar.context());
+        channel.setMethodCallHandler(locationWithMethodChannel);
+        registrar.addRequestPermissionsResultListener(locationWithMethodChannel.getPermissionsResultListener());
+        registrar.addActivityResultListener(locationWithMethodChannel);
 
-            final EventChannel eventChannel = new EventChannel(registrar.messenger(), STREAM_CHANNEL_NAME);
-            LocationPlugin locationWithEventChannel = new LocationPlugin(registrar.activity());
-            eventChannel.setStreamHandler(locationWithEventChannel);
-            registrar.addRequestPermissionsResultListener(locationWithEventChannel.getPermissionsResultListener());
-        }
+        final EventChannel eventChannel = new EventChannel(registrar.messenger(), STREAM_CHANNEL_NAME);
+        LocationPlugin locationWithEventChannel = new LocationPlugin(registrar.activity(),registrar.context());
+        eventChannel.setStreamHandler(locationWithEventChannel);
+        registrar.addRequestPermissionsResultListener(locationWithEventChannel.getPermissionsResultListener());
+
     }
 
     @Override
@@ -354,17 +355,21 @@ public class LocationPlugin implements MethodCallHandler, StreamHandler, PluginR
      * Return the current state of the permissions needed.
      */
     private boolean checkPermissions() {
-        this.locationPermissionState = ActivityCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION);
+        this.locationPermissionState = ActivityCompat.checkSelfPermission(mContext, Manifest.permission.ACCESS_FINE_LOCATION);
         return this.locationPermissionState == PackageManager.PERMISSION_GRANTED;
     }
 
     private void requestPermissions() {
-        ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                REQUEST_PERMISSIONS_REQUEST_CODE);
+        if(activity!=null){
+            ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    REQUEST_PERMISSIONS_REQUEST_CODE);
+        }
     }
 
     private boolean shouldShowRequestPermissionRationale() {
-        return ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION);
+        if(activity!=null){
+            return ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION);
+        }
     }
 
 
@@ -400,7 +405,7 @@ public class LocationPlugin implements MethodCallHandler, StreamHandler, PluginR
         }
         this.result = result;
         mSettingsClient.checkLocationSettings(mLocationSettingsRequest)
-            .addOnFailureListener(activity, new OnFailureListener() {
+            .addOnFailureListener(new OnFailureListener() {
                 @Override
                 public void onFailure(@NonNull Exception e) {
                     int statusCode = ((ApiException) e).getStatusCode();
@@ -425,7 +430,7 @@ public class LocationPlugin implements MethodCallHandler, StreamHandler, PluginR
 
     public void startRequestingLocation() {
         mSettingsClient.checkLocationSettings(mLocationSettingsRequest)
-                .addOnSuccessListener(activity, new OnSuccessListener<LocationSettingsResponse>() {
+                .addOnSuccessListener(new OnSuccessListener<LocationSettingsResponse>() {
                     @Override
                     public void onSuccess(LocationSettingsResponse locationSettingsResponse) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) { 
@@ -433,7 +438,7 @@ public class LocationPlugin implements MethodCallHandler, StreamHandler, PluginR
                         }
                         mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.myLooper());
                     }
-                }).addOnFailureListener(activity, new OnFailureListener() {
+                }).addOnFailureListener(new OnFailureListener() {
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         int statusCode = ((ApiException) e).getStatusCode();
